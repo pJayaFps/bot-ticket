@@ -644,7 +644,7 @@ client.on('interactionCreate', async (interaction) => {
         closedByUser: interaction.user,
         status: 'deletado',
         notes: 'Exclusão pelo painel staff',
-        includeFeedback: false
+        includeFeedback: true
       });
       await logAction(interaction.guild, `Ticket ${interaction.channel.name} deletado por ${interaction.user.tag}. Transcript enviado para DM e logs.`);
       await interaction.editReply({ content: 'Transcript enviado. Ticket será deletado em 10 segundos.' });
