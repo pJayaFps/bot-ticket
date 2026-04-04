@@ -126,6 +126,12 @@ function ticketPanelEmbed(data, guild) {
     .setColor(painel.color || '#2b2d31'), guild);
 }
 
+function buildPixQrUrl(pix) {
+  if (pix.qrCode && /^https?:\/\//i.test(pix.qrCode)) return pix.qrCode;
+  const payload = pix.qrCode || `PIX:${pix.pixKey || 'nao-configurado'}|VALOR:${pix.value || '0.00'}|RECEBEDOR:${pix.receiverName || 'recebedor'}`;
+  return `https://api.qrserver.com/v1/create-qr-code/?size=512x512&data=${encodeURIComponent(payload)}`;
+}
+
 async function logAction(guild, text) {
   const data = readData();
   const logsId = data.config.ticket.logsChannelId;
@@ -322,6 +328,7 @@ client.on('interactionCreate', async (interaction) => {
         return;
       }
       const pix = data.config.pix;
+      const qrImage = buildPixQrUrl(pix);
       const embed = applyGuildBranding(new EmbedBuilder()
         .setTitle('Pagamento PIX')
         .setDescription(pix.message || 'Pague pelo PIX abaixo.')
@@ -329,12 +336,18 @@ client.on('interactionCreate', async (interaction) => {
           { name: 'Recebedor', value: pix.receiverName || 'Não configurado' },
           { name: 'Chave PIX', value: pix.pixKey || 'Não configurado' },
           { name: 'Valor', value: pix.value || 'Não configurado' },
-          { name: 'QR Code', value: pix.qrCode || 'Não configurado' }
+          { name: 'QR Code', value: pix.qrCode || 'Gerado automaticamente pela chave/valor.' }
         )
+        .setImage(qrImage)
         .setColor(0x2ecc71), interaction.guild);
       await interaction.reply({
         embeds: [embed],
-        components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('pay_confirmed').setLabel('Pagamento Confirmado').setStyle(ButtonStyle.Success))]
+        components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('pay_confirmed').setLabel('Pagamento Confirmado').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('pix_config').setLabel('Configurar PIX/Preço').setStyle(ButtonStyle.Secondary)
+          )
+        ]
       });
       return;
     }
@@ -374,6 +387,23 @@ client.on('interactionCreate', async (interaction) => {
         d.config.transcript.type = interaction.fields.getTextInputValue('transcript') || 'txt';
       });
       await interaction.reply({ content: 'Configurações atualizadas.', ephemeral: true });
+      return;
+    }
+
+    if (interaction.customId === 'setup_pix_modal') {
+      const data = readData();
+      if (!isStaff(interaction.member, data)) {
+        await interaction.reply({ content: 'Somente staff pode configurar PIX.', ephemeral: true });
+        return;
+      }
+      updateData((d) => {
+        d.config.pix.receiverName = interaction.fields.getTextInputValue('pix_receiver').trim();
+        d.config.pix.pixKey = interaction.fields.getTextInputValue('pix_key').trim();
+        d.config.pix.value = interaction.fields.getTextInputValue('pix_value').trim();
+        d.config.pix.message = interaction.fields.getTextInputValue('pix_message').trim();
+        d.config.pix.qrCode = interaction.fields.getTextInputValue('pix_qrcode').trim();
+      });
+      await interaction.reply({ content: 'Configuração PIX atualizada com sucesso.', ephemeral: true });
       return;
     }
 
@@ -565,6 +595,24 @@ client.on('interactionCreate', async (interaction) => {
       if (data.config.ticketPanel.staffRoleId) {
         await interaction.channel.send(`<@&${data.config.ticketPanel.staffRoleId}> notificação solicitada por ${interaction.user}.`);
       }
+      return;
+    }
+
+    if (interaction.customId === 'pix_config') {
+      if (!isStaff(interaction.member, data)) {
+        await interaction.reply({ content: 'Somente staff pode configurar PIX.', ephemeral: true });
+        return;
+      }
+      const pix = data.config.pix;
+      const modal = new ModalBuilder().setCustomId('setup_pix_modal').setTitle('Configurar PIX e preço');
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pix_receiver').setLabel('Nome do recebedor').setStyle(TextInputStyle.Short).setRequired(true).setValue(pix.receiverName || '')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pix_key').setLabel('Chave PIX').setStyle(TextInputStyle.Short).setRequired(true).setValue(pix.pixKey || '')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pix_value').setLabel('Preço/Valor (ex: 120.00)').setStyle(TextInputStyle.Short).setRequired(true).setValue(pix.value || '')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pix_message').setLabel('Mensagem do embed PIX').setStyle(TextInputStyle.Paragraph).setRequired(false).setValue(pix.message || '')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pix_qrcode').setLabel('Payload/URL QR Code (opcional)').setStyle(TextInputStyle.Short).setRequired(false).setValue(pix.qrCode || ''))
+      );
+      await interaction.showModal(modal);
       return;
     }
 
