@@ -96,7 +96,7 @@ function userTicketEmbed(user, meta) {
 function ticketButtons() {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('close_ticket').setLabel('Fechar Ticket').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('leave_ticket').setLabel('Sair do Ticket').setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId('member_panel').setLabel('Painel Membro').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('staff_panel').setLabel('Painel Staff').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('pay_confirmed').setLabel('Pagamento Confirmado').setStyle(ButtonStyle.Success)
@@ -539,31 +539,28 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    if (interaction.customId === 'close_ticket') {
+    if (interaction.customId === 'leave_ticket') {
       const meta = data.tickets[interaction.channelId];
       if (!meta) {
         await interaction.reply({ content: 'Este canal não é um ticket válido.', ephemeral: true });
         return;
       }
+      if (interaction.user.id !== meta.openerId) {
+        await interaction.reply({ content: 'Somente o cliente dono do ticket pode usar este botão.', ephemeral: true });
+        return;
+      }
 
-      await interaction.deferReply({ ephemeral: true });
-      await sendTicketClosingArtifacts({
-        guild: interaction.guild,
-        channel: interaction.channel,
-        closedByUser: interaction.user,
-        status: 'fechado',
-        notes: 'Fechamento pelo botão principal',
-        includeFeedback: true
+      await interaction.channel.permissionOverwrites.edit(interaction.user.id, {
+        ViewChannel: true,
+        ReadMessageHistory: true,
+        SendMessages: false,
+        AddReactions: false,
+        AttachFiles: false,
+        CreatePublicThreads: false,
+        CreatePrivateThreads: false
       });
-      await logAction(interaction.guild, `Ticket ${interaction.channel.name} fechado por ${interaction.user.tag}. Deleção em 10 segundos.`);
-      await interaction.editReply({ content: 'Ticket fechado. O canal será removido em 10 segundos.' });
-
-      setTimeout(() => {
-        updateData((d) => {
-          delete d.tickets[interaction.channelId];
-        });
-        interaction.channel.delete('Ticket fechado pelo botão principal').catch(() => null);
-      }, 10_000);
+      await interaction.reply({ content: 'Você saiu do ticket. Agora você só pode visualizar este canal.', ephemeral: true });
+      await logAction(interaction.guild, `${interaction.user.tag} saiu do ticket ${interaction.channel.name} (somente visualização).`);
       return;
     }
 
