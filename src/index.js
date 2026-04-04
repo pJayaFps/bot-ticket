@@ -39,7 +39,8 @@ const client = new Client({
 const commands = [
   new SlashCommandBuilder().setName('enviar-ticket').setDescription('Configura e envia o painel de ticket'),
   new SlashCommandBuilder().setName('pix').setDescription('Envia embed PIX no ticket atual'),
-  new SlashCommandBuilder().setName('config').setDescription('Abre painel de configurações internas')
+  new SlashCommandBuilder().setName('config').setDescription('Abre painel de configurações internas'),
+  new SlashCommandBuilder().setName('config-pix').setDescription('Configura PIX e preço via comando')
 ].map((c) => c.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(token);
@@ -344,11 +345,28 @@ client.on('interactionCreate', async (interaction) => {
         embeds: [embed],
         components: [
           new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('pay_confirmed').setLabel('Pagamento Confirmado').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('pix_config').setLabel('Configurar PIX/Preço').setStyle(ButtonStyle.Secondary)
+            new ButtonBuilder().setCustomId('pay_confirmed').setLabel('Pagamento Confirmado').setStyle(ButtonStyle.Success)
           )
         ]
       });
+      return;
+    }
+
+    if (interaction.commandName === 'config-pix') {
+      if (!isStaff(interaction.member, data)) {
+        await interaction.reply({ content: 'Somente staff pode configurar PIX.', ephemeral: true });
+        return;
+      }
+      const pix = data.config.pix;
+      const modal = new ModalBuilder().setCustomId('setup_pix_modal').setTitle('Configurar PIX e preço');
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pix_receiver').setLabel('Nome do recebedor').setStyle(TextInputStyle.Short).setRequired(true).setValue(pix.receiverName || '')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pix_key').setLabel('Chave PIX').setStyle(TextInputStyle.Short).setRequired(true).setValue(pix.pixKey || '')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pix_value').setLabel('Preço/Valor (ex: 120.00)').setStyle(TextInputStyle.Short).setRequired(true).setValue(pix.value || '')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pix_message').setLabel('Mensagem do embed PIX').setStyle(TextInputStyle.Paragraph).setRequired(false).setValue(pix.message || '')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pix_qrcode').setLabel('Payload/URL QR Code (opcional)').setStyle(TextInputStyle.Short).setRequired(false).setValue(pix.qrCode || ''))
+      );
+      await interaction.showModal(modal);
       return;
     }
 
@@ -595,24 +613,6 @@ client.on('interactionCreate', async (interaction) => {
       if (data.config.ticketPanel.staffRoleId) {
         await interaction.channel.send(`<@&${data.config.ticketPanel.staffRoleId}> notificação solicitada por ${interaction.user}.`);
       }
-      return;
-    }
-
-    if (interaction.customId === 'pix_config') {
-      if (!isStaff(interaction.member, data)) {
-        await interaction.reply({ content: 'Somente staff pode configurar PIX.', ephemeral: true });
-        return;
-      }
-      const pix = data.config.pix;
-      const modal = new ModalBuilder().setCustomId('setup_pix_modal').setTitle('Configurar PIX e preço');
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pix_receiver').setLabel('Nome do recebedor').setStyle(TextInputStyle.Short).setRequired(true).setValue(pix.receiverName || '')),
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pix_key').setLabel('Chave PIX').setStyle(TextInputStyle.Short).setRequired(true).setValue(pix.pixKey || '')),
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pix_value').setLabel('Preço/Valor (ex: 120.00)').setStyle(TextInputStyle.Short).setRequired(true).setValue(pix.value || '')),
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pix_message').setLabel('Mensagem do embed PIX').setStyle(TextInputStyle.Paragraph).setRequired(false).setValue(pix.message || '')),
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pix_qrcode').setLabel('Payload/URL QR Code (opcional)').setStyle(TextInputStyle.Short).setRequired(false).setValue(pix.qrCode || ''))
-      );
-      await interaction.showModal(modal);
       return;
     }
 
