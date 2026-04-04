@@ -39,11 +39,37 @@ const client = new Client({
 const commands = [
   new SlashCommandBuilder().setName('enviar-ticket').setDescription('Configura e envia o painel de ticket'),
   new SlashCommandBuilder().setName('pix').setDescription('Envia embed PIX no ticket atual'),
-  new SlashCommandBuilder().setName('config').setDescription('Abre painel de configurações internas')
+  new SlashCommandBuilder().setName('config').setDescription('Abre painel de configurações internas'),
+  new SlashCommandBuilder().setName('assumir-ticket').setDescription('Assume o ticket atual (somente staff)')
 ].map((c) => c.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(token);
 await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
+
+const AUTO_MESSAGE = `:rokedazul: **Número 1. CLIPS!**
+Na edit CLEAN 30seg = 10/12 clips SOMENTE!
+Na edit CLEAN 45seg = 12/16 clips SOMENTE!
+Na edit CLEAN 1min = 16/20 clips SOMENTE!
+
+Na edit BÁSICA 30seg = 15/20 clips SOMENTE!
+Na edit BÁSICA 45seg = 20/25 clips SOMENTE!
+Na edit BÁSICA 1min = 25/30 clips SOMENTE!
+
+Na edit AVANÇADA 30seg = 20/25 clips SOMENTE!
+Na edit AVANÇADA 45seg = 25/30 clips SOMENTE!
+Na edit AVANÇADA 1min = 30/35 clips SOMENTE!
+
+Obrigatório ser a quantidade pedida, nada a MAIS nem a MENOS.
+
+:rokedazul: **Número 2. MÚSICA!**
+Escolha a música desejada, envie o link do YouTube.
+Informe o trecho desejado. Exemplo: "COMEÇA EM 0:00".
+
+:rokedazul: **Número 3. ENTREGA DO VÍDEO!**
+A entrega acontece por ordem da fila.
+
+Se ocorrer algum imprevisto, avisaremos em <#ANUNCIOS_CHANNEL_ID>.
+Fique de olho nas notificações.`;
 
 function hasRole(member, roleId) {
   if (!roleId) return true;
@@ -54,18 +80,40 @@ function isStaff(member, data) {
   return hasRole(member, data.config.ticketPanel.staffRoleId);
 }
 
+function userTicketEmbed(user, meta) {
+  const embed = new EmbedBuilder()
+    .setTitle('🎫 Atendimento iniciado')
+    .setDescription(`Olá, ${user}. Nossa equipe já foi avisada sobre a abertura do seu ticket.\n\nEnquanto aguarda um staff, descreva seu pedido com o máximo de detalhes.`)
+    .addFields(
+      { name: 'Aberto por', value: `${user}`, inline: true },
+      { name: 'Assumido por', value: meta?.assumedBy ? `<@${meta.assumedBy}>` : 'Ninguém ainda', inline: true }
+    )
+    .setColor(0x5865f2);
+
+  return embed;
+}
+
 function ticketButtons() {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('member_panel').setLabel('Painel Membro').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('staff_panel').setLabel('Painel Staff').setStyle(ButtonStyle.Primary)
-    ),
-    new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('leave_ticket').setLabel('Sair do Ticket').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('pay_confirmed').setLabel('Pagamento Confirmado').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('claim_ticket').setLabel('Assumir Ticket').setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId('member_panel').setLabel('Painel Membro').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('staff_panel').setLabel('Painel Staff').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('pay_confirmed').setLabel('Pagamento Confirmado').setStyle(ButtonStyle.Success)
     )
   ];
+}
+
+function ticketPanelEmbed(data) {
+  const painel = data.config.ticketPanel;
+  return new EmbedBuilder()
+    .setTitle(painel.title || '🎬 Central de Pedidos')
+    .setDescription(
+      `${painel.description || 'Abra um ticket para iniciar seu atendimento.'}\n\n` +
+      '✨ **Atendimento personalizado, edição premium e entrega ágil.**\n' +
+      '🚀 **Garanta agora sua edição exclusiva e destaque seu conteúdo.**'
+    )
+    .setColor(painel.color || '#2b2d31');
 }
 
 async function logAction(guild, text) {
@@ -75,6 +123,42 @@ async function logAction(guild, text) {
   const logs = await guild.channels.fetch(logsId).catch(() => null);
   if (!logs || !logs.isTextBased()) return;
   await logs.send({ content: `📝 ${text}` });
+}
+
+async function updateTicketMainMessage(channelId) {
+  const data = readData();
+  const meta = data.tickets[channelId];
+  if (!meta?.mainMessageId) return;
+  const guild = await client.guilds.fetch(guildId).catch(() => null);
+  if (!guild) return;
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel || !channel.isTextBased()) return;
+  const msg = await channel.messages.fetch(meta.mainMessageId).catch(() => null);
+  if (!msg) return;
+
+  const opener = await guild.members.fetch(meta.openerId).catch(() => null);
+  const user = opener?.user || { id: meta.openerId, toString: () => `<@${meta.openerId}>` };
+  await msg.edit({ embeds: [userTicketEmbed(user, meta)], components: ticketButtons() });
+}
+
+async function setAssumed(channel, staffUser) {
+  const data = readData();
+  const meta = data.tickets[channel.id];
+  if (!meta || meta.assumedBy) return false;
+
+  updateData((d) => {
+    if (d.tickets[channel.id]) d.tickets[channel.id].assumedBy = staffUser.id;
+  });
+
+  const embed = new EmbedBuilder()
+    .setTitle('✅ Ticket assumido')
+    .setDescription(`Este ticket foi assumido por ${staffUser}.\n\nA partir deste momento, o atendimento e atualizações ficam sob responsabilidade dele(a).`)
+    .setColor(0x2ecc71);
+
+  await channel.send({ embeds: [embed] });
+  await updateTicketMainMessage(channel.id);
+  await logAction(channel.guild, `${staffUser.tag} assumiu o ticket ${channel.name}.`);
+  return true;
 }
 
 async function renameDeadlineTicket(guild, ticketMeta, channelId) {
@@ -112,15 +196,10 @@ client.on('messageCreate', async (message) => {
   if (!message.guild || message.author.bot) return;
   const data = readData();
   const ticketMeta = data.tickets[message.channelId];
-  if (!ticketMeta) return;
-  if (ticketMeta.assumedBy) return;
+  if (!ticketMeta || ticketMeta.assumedBy) return;
   if (!isStaff(message.member, data)) return;
 
-  updateData((d) => {
-    d.tickets[message.channelId].assumedBy = message.author.id;
-  });
-  await message.channel.send(`Este ticket foi assumido por: ${message.author}.`);
-  await logAction(message.guild, `${message.author.tag} assumiu o ticket ${message.channel.name}.`);
+  await setAssumed(message.channel, message.author);
 });
 
 client.on('interactionCreate', async (interaction) => {
@@ -134,11 +213,11 @@ client.on('interactionCreate', async (interaction) => {
       }
       const modal = new ModalBuilder().setCustomId('setup_ticket_panel').setTitle('Configurar painel ticket');
       modal.addComponents(
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('title').setLabel('Título').setStyle(TextInputStyle.Short).setRequired(true).setValue(data.config.ticketPanel.title)),
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('description').setLabel('Descrição').setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(data.config.ticketPanel.description)),
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('category').setLabel('Categoria ID').setStyle(TextInputStyle.Short).setRequired(true).setValue(data.config.ticketPanel.categoryId || '')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('title').setLabel('Título').setStyle(TextInputStyle.Short).setRequired(true).setValue(data.config.ticketPanel.title || '🎬 Central de Pedidos')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('description').setLabel('Descrição').setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(data.config.ticketPanel.description || 'Abra seu ticket para iniciar o atendimento.')),
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('staffRole').setLabel('Cargo staff ID').setStyle(TextInputStyle.Short).setRequired(true).setValue(data.config.ticketPanel.staffRoleId || '')),
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('openRole').setLabel('Cargo pode abrir ID').setStyle(TextInputStyle.Short).setRequired(true).setValue(data.config.ticketPanel.openerRoleId || ''))
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('openRole').setLabel('Cargo pode abrir ID').setStyle(TextInputStyle.Short).setRequired(true).setValue(data.config.ticketPanel.openerRoleId || '')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('color').setLabel('Cor do embed (#5865F2)').setStyle(TextInputStyle.Short).setRequired(false).setValue(data.config.ticketPanel.color || '#5865F2'))
       );
       await interaction.showModal(modal);
       return;
@@ -178,7 +257,25 @@ client.on('interactionCreate', async (interaction) => {
           { name: 'QR Code', value: pix.qrCode || 'Não configurado' }
         )
         .setColor(0x2ecc71);
-      await interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('pay_confirmed').setLabel('Pagamento Confirmado').setStyle(ButtonStyle.Success))] });
+      await interaction.reply({
+        embeds: [embed],
+        components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('pay_confirmed').setLabel('Pagamento Confirmado').setStyle(ButtonStyle.Success))]
+      });
+      return;
+    }
+
+    if (interaction.commandName === 'assumir-ticket') {
+      const meta = data.tickets[interaction.channelId];
+      if (!meta) {
+        await interaction.reply({ content: 'Use este comando dentro de um ticket.', ephemeral: true });
+        return;
+      }
+      if (!isStaff(interaction.member, data)) {
+        await interaction.reply({ content: 'Somente staff.', ephemeral: true });
+        return;
+      }
+      const changed = await setAssumed(interaction.channel, interaction.user);
+      await interaction.reply({ content: changed ? 'Ticket assumido com sucesso.' : 'Este ticket já foi assumido.', ephemeral: true });
       return;
     }
   }
@@ -187,21 +284,23 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId === 'setup_ticket_panel') {
       const title = interaction.fields.getTextInputValue('title');
       const description = interaction.fields.getTextInputValue('description');
-      const categoryId = interaction.fields.getTextInputValue('category');
       const staffRoleId = interaction.fields.getTextInputValue('staffRole');
       const openerRoleId = interaction.fields.getTextInputValue('openRole');
+      const color = interaction.fields.getTextInputValue('color') || '#5865F2';
 
       updateData((d) => {
         d.config.ticketPanel.title = title;
         d.config.ticketPanel.description = description;
-        d.config.ticketPanel.categoryId = categoryId;
         d.config.ticketPanel.staffRoleId = staffRoleId;
         d.config.ticketPanel.openerRoleId = openerRoleId;
+        d.config.ticketPanel.color = color;
       });
 
-      const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor(readData().config.ticketPanel.color || '#2b2d31');
       await interaction.reply({ content: 'Painel enviado.', ephemeral: true });
-      await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('open_ticket').setLabel('➡️ Abrir Ticket').setStyle(ButtonStyle.Primary))] });
+      await interaction.channel.send({
+        embeds: [ticketPanelEmbed(readData())],
+        components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('open_ticket').setLabel('➡️ Abrir Ticket').setStyle(ButtonStyle.Primary))]
+      });
       return;
     }
 
@@ -251,7 +350,10 @@ client.on('interactionCreate', async (interaction) => {
           .setColor(0x3498db);
 
         const feedback = new EmbedBuilder().setTitle('Avaliação').setDescription('Avalie seu atendimento para nos ajudar.').setColor(0xf1c40f);
-        const feedbackButton = new ButtonBuilder().setLabel('Avaliar Atendimento').setStyle(ButtonStyle.Link).setURL(`https://discord.com/channels/${interaction.guildId}/${data.config.feedbackChannelId || interaction.channelId}`);
+        const feedbackButton = new ButtonBuilder()
+          .setLabel('Avaliar Atendimento')
+          .setStyle(ButtonStyle.Link)
+          .setURL(`https://discord.com/channels/${interaction.guildId}/${data.config.feedbackChannelId || interaction.channelId}`);
 
         await user.send({ embeds: [summary] }).catch(() => null);
         await user.send({ files: [{ attachment: Buffer.from(transcriptContent, 'utf8'), name: `transcript-${interaction.channelId}.txt` }] }).catch(() => null);
@@ -290,6 +392,19 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.reply({ content: `Usuário ${mode === 'add' ? 'adicionado' : 'removido'} no ticket.`, ephemeral: true });
       return;
     }
+
+    if (interaction.customId === 'rename_modal') {
+      const data = readData();
+      if (!isStaff(interaction.member, data)) {
+        await interaction.reply({ content: 'Somente staff.', ephemeral: true });
+        return;
+      }
+      const newName = interaction.fields.getTextInputValue('newName').toLowerCase().replace(/[^a-z0-9-_]/g, '').slice(0, 90);
+      await interaction.channel.setName(newName);
+      await interaction.reply({ content: `Ticket renomeado para ${newName}.`, ephemeral: true });
+      await logAction(interaction.guild, `${interaction.user.tag} renomeou ticket para ${newName}.`);
+      return;
+    }
   }
 
   if (interaction.isButton()) {
@@ -320,13 +435,39 @@ client.on('interactionCreate', async (interaction) => {
           assumedBy: null,
           paymentConfirmedAt: null,
           deadlineStage: -1,
-          status: 'aberto'
+          status: 'aberto',
+          mainMessageId: ''
         };
       });
 
-      const embed = new EmbedBuilder().setTitle('Ticket aberto').setDescription(data.config.ticket.autoMessage).setColor(0x5865f2);
-      await channel.send({ content: `<@${interaction.user.id}>`, embeds: [embed], components: ticketButtons() });
-      await interaction.reply({ content: `Ticket criado: ${channel}`, ephemeral: true });
+      const ticketMsg = await channel.send({
+        content: `<@${interaction.user.id}>`,
+        embeds: [userTicketEmbed(interaction.user, readData().tickets[channel.id])],
+        components: ticketButtons()
+      });
+
+      updateData((d) => {
+        if (d.tickets[channel.id]) d.tickets[channel.id].mainMessageId = ticketMsg.id;
+      });
+
+      const autoText = AUTO_MESSAGE.replace('ANUNCIOS_CHANNEL_ID', data.config.feedbackChannelId || channel.id);
+      await channel.send({ content: autoText });
+
+      const confirm = new EmbedBuilder()
+        .setTitle('✅ Ticket aberto com sucesso')
+        .setDescription('Seu ticket foi aberto com sucesso. Clique no botão abaixo para acompanhar seu atendimento.')
+        .setColor(0x57f287);
+
+      await interaction.reply({
+        embeds: [confirm],
+        ephemeral: true,
+        components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setLabel('Ver Ticket').setStyle(ButtonStyle.Link).setURL(`https://discord.com/channels/${interaction.guildId}/${channel.id}`)
+          )
+        ]
+      });
+
       await logAction(interaction.guild, `${interaction.user.tag} abriu o ticket ${channel.name}.`);
       return;
     }
@@ -367,21 +508,6 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    if (interaction.customId === 'claim_ticket') {
-      const meta = data.tickets[interaction.channelId];
-      if (!meta) return;
-      if (!isStaff(interaction.member, data)) {
-        await interaction.reply({ content: 'Somente staff.', ephemeral: true });
-        return;
-      }
-      updateData((d) => {
-        d.tickets[interaction.channelId].assumedBy = interaction.user.id;
-      });
-      await interaction.reply({ content: `Este ticket foi assumido por: ${interaction.user}.` });
-      await logAction(interaction.guild, `${interaction.user.tag} assumiu manualmente ${interaction.channel.name}.`);
-      return;
-    }
-
     if (interaction.customId === 'pay_confirmed') {
       const meta = data.tickets[interaction.channelId];
       if (!meta) {
@@ -393,11 +519,12 @@ client.on('interactionCreate', async (interaction) => {
         return;
       }
 
+      const now = Date.now();
       updateData((d) => {
-        d.tickets[interaction.channelId].paymentConfirmedAt = Date.now();
+        d.tickets[interaction.channelId].paymentConfirmedAt = now;
         d.tickets[interaction.channelId].deadlineStage = -1;
       });
-      await renameDeadlineTicket(interaction.guild, { ...meta, paymentConfirmedAt: Date.now(), deadlineStage: -1 }, interaction.channelId);
+      await renameDeadlineTicket(interaction.guild, { ...meta, paymentConfirmedAt: now, deadlineStage: -1 }, interaction.channelId);
       await interaction.reply({ content: 'Pagamento confirmado pela staff.' });
       await logAction(interaction.guild, `${interaction.user.tag} confirmou pagamento em ${interaction.channel.name}.`);
       return;
@@ -462,18 +589,6 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.showModal(modal);
       return;
     }
-  }
-
-  if (interaction.isModalSubmit() && interaction.customId === 'rename_modal') {
-    const data = readData();
-    if (!isStaff(interaction.member, data)) {
-      await interaction.reply({ content: 'Somente staff.', ephemeral: true });
-      return;
-    }
-    const newName = interaction.fields.getTextInputValue('newName').toLowerCase().replace(/[^a-z0-9-_]/g, '').slice(0, 90);
-    await interaction.channel.setName(newName);
-    await interaction.reply({ content: `Ticket renomeado para ${newName}.`, ephemeral: true });
-    await logAction(interaction.guild, `${interaction.user.tag} renomeou ticket para ${newName}.`);
   }
 });
 
