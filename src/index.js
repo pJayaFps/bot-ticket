@@ -546,6 +546,7 @@ client.on('interactionCreate', async (interaction) => {
         return;
       }
 
+      await interaction.deferReply({ ephemeral: true });
       await sendTicketClosingArtifacts({
         guild: interaction.guild,
         channel: interaction.channel,
@@ -555,7 +556,7 @@ client.on('interactionCreate', async (interaction) => {
         includeFeedback: true
       });
       await logAction(interaction.guild, `Ticket ${interaction.channel.name} fechado por ${interaction.user.tag}. Deleção em 10 segundos.`);
-      await interaction.reply({ content: 'Ticket fechado. O canal será removido em 10 segundos.' });
+      await interaction.editReply({ content: 'Ticket fechado. O canal será removido em 10 segundos.' });
 
       setTimeout(() => {
         updateData((d) => {
@@ -595,6 +596,7 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.reply({ content: 'Este canal não é um ticket válido.', ephemeral: true });
         return;
       }
+      await interaction.deferReply({ ephemeral: true });
       await sendTicketClosingArtifacts({
         guild: interaction.guild,
         channel: interaction.channel,
@@ -604,7 +606,7 @@ client.on('interactionCreate', async (interaction) => {
         includeFeedback: false
       });
       await logAction(interaction.guild, `Ticket ${interaction.channel.name} deletado por ${interaction.user.tag}. Transcript enviado para DM e logs.`);
-      await interaction.reply({ content: 'Transcript enviado. Ticket será deletado em 10 segundos.' });
+      await interaction.editReply({ content: 'Transcript enviado. Ticket será deletado em 10 segundos.' });
       setTimeout(() => {
         updateData((d) => {
           delete d.tickets[interaction.channelId];
