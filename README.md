@@ -15,6 +15,7 @@
 - `/enviar-ticket` com modal para configurar painel com embed mais visual.
 - Resposta de abertura com embed de sucesso + botão **Ver Ticket**.
 - Embed interno do ticket com `Aberto por` e `Assumido por` (atualiza ao assumir).
+- Branding em embeds com autor **GUSTAVIN EDITS** + ícone do servidor.
 - Botões no ticket: **Sair do Ticket**, **Painel Membro**, **Painel Staff**, **Pagamento Confirmado**.
 - Auto-assume na primeira mensagem enviada por staff dentro do ticket.
 - Mensagem automática detalhada enviada após abrir ticket.

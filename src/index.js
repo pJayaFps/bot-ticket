@@ -79,15 +79,26 @@ function isStaff(member, data) {
   return hasRole(member, data.config.ticketPanel.staffRoleId);
 }
 
-function userTicketEmbed(user, meta) {
-  const embed = new EmbedBuilder()
+function applyGuildBranding(embed, guild) {
+  if (!guild) return embed;
+  return embed.setAuthor({
+    name: 'GUSTAVIN EDITS',
+    iconURL: guild.iconURL({ dynamic: true, size: 1024 }) || undefined
+  });
+}
+
+function userTicketEmbed(user, meta, guild) {
+  const embed = applyGuildBranding(
+    new EmbedBuilder()
     .setTitle('🎫 Atendimento iniciado')
     .setDescription(`Olá, ${user}. Nossa equipe já foi avisada sobre a abertura do seu ticket.\n\nEnquanto aguarda um staff, descreva seu pedido com o máximo de detalhes.`)
     .addFields(
       { name: 'Aberto por', value: `${user}`, inline: true },
       { name: 'Assumido por', value: meta?.assumedBy ? `<@${meta.assumedBy}>` : 'Ninguém ainda', inline: true }
     )
-    .setColor(0x5865f2);
+    .setColor(0x5865f2),
+    guild
+  );
 
   return embed;
 }
@@ -103,16 +114,16 @@ function ticketButtons() {
   ];
 }
 
-function ticketPanelEmbed(data) {
+function ticketPanelEmbed(data, guild) {
   const painel = data.config.ticketPanel;
-  return new EmbedBuilder()
+  return applyGuildBranding(new EmbedBuilder()
     .setTitle(painel.title || '🎬 Central de Pedidos')
     .setDescription(
       `${painel.description || 'Abra um ticket para iniciar seu atendimento.'}\n\n` +
       '✨ **Atendimento personalizado, edição premium e entrega ágil.**\n' +
       '🚀 **Garanta agora sua edição exclusiva e destaque seu conteúdo.**'
     )
-    .setColor(painel.color || '#2b2d31');
+    .setColor(painel.color || '#2b2d31'), guild);
 }
 
 async function logAction(guild, text) {
@@ -137,7 +148,7 @@ async function updateTicketMainMessage(channelId) {
 
   const opener = await guild.members.fetch(meta.openerId).catch(() => null);
   const user = opener?.user || { id: meta.openerId, toString: () => `<@${meta.openerId}>` };
-  await msg.edit({ embeds: [userTicketEmbed(user, meta)], components: ticketButtons() });
+  await msg.edit({ embeds: [userTicketEmbed(user, meta, guild)], components: ticketButtons() });
 }
 
 async function setAssumed(channel, staffUser) {
@@ -149,10 +160,10 @@ async function setAssumed(channel, staffUser) {
     if (d.tickets[channel.id]) d.tickets[channel.id].assumedBy = staffUser.id;
   });
 
-  const embed = new EmbedBuilder()
+  const embed = applyGuildBranding(new EmbedBuilder()
     .setTitle('✅ Ticket assumido')
     .setDescription(`Este ticket foi assumido por ${staffUser}.\n\nA partir deste momento, o atendimento e atualizações ficam sob responsabilidade dele(a).`)
-    .setColor(0x2ecc71);
+    .setColor(0x2ecc71), channel.guild);
 
   await channel.send({ embeds: [embed] });
   await updateTicketMainMessage(channel.id);
@@ -187,7 +198,7 @@ async function sendTicketClosingArtifacts({
   const openerUser = await client.users.fetch(meta.openerId).catch(() => null);
 
   if (openerUser) {
-    const summary = new EmbedBuilder()
+    const summary = applyGuildBranding(new EmbedBuilder()
       .setTitle('Resumo do Ticket')
       .addFields(
         { name: 'Aberto por', value: `<@${meta.openerId}>` },
@@ -195,13 +206,13 @@ async function sendTicketClosingArtifacts({
         { name: 'Atendido por', value: meta.assumedBy ? `<@${meta.assumedBy}>` : 'Não assumido' },
         { name: 'Status final', value: status }
       )
-      .setColor(0x3498db);
+      .setColor(0x3498db), guild);
 
     await openerUser.send({ embeds: [summary] }).catch(() => null);
     await openerUser.send({ files: [transcriptFile] }).catch(() => null);
 
     if (includeFeedback) {
-      const feedback = new EmbedBuilder().setTitle('Avaliação').setDescription('Avalie seu atendimento para nos ajudar.').setColor(0xf1c40f);
+      const feedback = applyGuildBranding(new EmbedBuilder().setTitle('Avaliação').setDescription('Avalie seu atendimento para nos ajudar.').setColor(0xf1c40f), guild);
       const feedbackButton = new ButtonBuilder()
         .setLabel('Avaliar Atendimento')
         .setStyle(ButtonStyle.Link)
@@ -311,7 +322,7 @@ client.on('interactionCreate', async (interaction) => {
         return;
       }
       const pix = data.config.pix;
-      const embed = new EmbedBuilder()
+      const embed = applyGuildBranding(new EmbedBuilder()
         .setTitle('Pagamento PIX')
         .setDescription(pix.message || 'Pague pelo PIX abaixo.')
         .addFields(
@@ -320,7 +331,7 @@ client.on('interactionCreate', async (interaction) => {
           { name: 'Valor', value: pix.value || 'Não configurado' },
           { name: 'QR Code', value: pix.qrCode || 'Não configurado' }
         )
-        .setColor(0x2ecc71);
+        .setColor(0x2ecc71), interaction.guild);
       await interaction.reply({
         embeds: [embed],
         components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('pay_confirmed').setLabel('Pagamento Confirmado').setStyle(ButtonStyle.Success))]
@@ -348,7 +359,7 @@ client.on('interactionCreate', async (interaction) => {
 
       await interaction.reply({ content: 'Painel enviado.', ephemeral: true });
       await interaction.channel.send({
-        embeds: [ticketPanelEmbed(readData())],
+        embeds: [ticketPanelEmbed(readData(), interaction.guild)],
         components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('open_ticket').setLabel('➡️ Abrir Ticket').setStyle(ButtonStyle.Primary))]
       });
       return;
@@ -437,7 +448,7 @@ client.on('interactionCreate', async (interaction) => {
 
       const ticketMsg = await channel.send({
         content: `<@${interaction.user.id}>`,
-        embeds: [userTicketEmbed(interaction.user, readData().tickets[channel.id])],
+        embeds: [userTicketEmbed(interaction.user, readData().tickets[channel.id], interaction.guild)],
         components: ticketButtons()
       });
 
@@ -448,10 +459,10 @@ client.on('interactionCreate', async (interaction) => {
       const autoText = AUTO_MESSAGE.replace('ANUNCIOS_CHANNEL_ID', data.config.feedbackChannelId || channel.id);
       await channel.send({ content: autoText });
 
-      const confirm = new EmbedBuilder()
+      const confirm = applyGuildBranding(new EmbedBuilder()
         .setTitle('✅ Ticket aberto com sucesso')
         .setDescription('Seu ticket foi aberto com sucesso. Clique no botão abaixo para acompanhar seu atendimento.')
-        .setColor(0x57f287);
+        .setColor(0x57f287), interaction.guild);
 
       await interaction.reply({
         embeds: [confirm],
