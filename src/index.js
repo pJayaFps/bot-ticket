@@ -96,7 +96,7 @@ function userTicketEmbed(user, meta) {
 function ticketButtons() {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('leave_ticket').setLabel('Sair do Ticket').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('close_ticket').setLabel('Fechar Ticket').setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId('member_panel').setLabel('Painel Membro').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('staff_panel').setLabel('Painel Staff').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('pay_confirmed').setLabel('Pagamento Confirmado').setStyle(ButtonStyle.Success)
@@ -161,6 +161,70 @@ async function setAssumed(channel, staffUser) {
   return true;
 }
 
+async function buildTranscript(channel, status = 'deletado', notes = '') {
+  const transcriptMessages = await channel.messages.fetch({ limit: 100 });
+  const lines = [...transcriptMessages.values()]
+    .sort((a, b) => a.createdTimestamp - b.createdTimestamp)
+    .map((m) => `[${new Date(m.createdTimestamp).toISOString()}] ${m.author.tag}: ${m.content || '(sem texto)'}`)
+    .join('\n');
+
+  return `Ticket: ${channel.name}\nStatus: ${status}\nObs: ${notes || 'Sem observações'}\n\n${lines}`;
+}
+
+async function sendTicketClosingArtifacts({
+  guild,
+  channel,
+  closedByUser,
+  status,
+  notes,
+  includeFeedback
+}) {
+  const data = readData();
+  const meta = data.tickets[channel.id];
+  if (!meta) return;
+
+  const transcriptContent = await buildTranscript(channel, status, notes);
+  const transcriptFile = { attachment: Buffer.from(transcriptContent, 'utf8'), name: `transcript-${channel.id}.txt` };
+  const openerUser = await client.users.fetch(meta.openerId).catch(() => null);
+
+  if (openerUser) {
+    const summary = new EmbedBuilder()
+      .setTitle('Resumo do Ticket')
+      .addFields(
+        { name: 'Aberto por', value: `<@${meta.openerId}>` },
+        { name: 'Fechado por', value: `<@${closedByUser.id}>` },
+        { name: 'Atendido por', value: meta.assumedBy ? `<@${meta.assumedBy}>` : 'Não assumido' },
+        { name: 'Status final', value: status }
+      )
+      .setColor(0x3498db);
+
+    await openerUser.send({ embeds: [summary] }).catch(() => null);
+    await openerUser.send({ files: [transcriptFile] }).catch(() => null);
+
+    if (includeFeedback) {
+      const feedback = new EmbedBuilder().setTitle('Avaliação').setDescription('Avalie seu atendimento para nos ajudar.').setColor(0xf1c40f);
+      const feedbackButton = new ButtonBuilder()
+        .setLabel('Avaliar Atendimento')
+        .setStyle(ButtonStyle.Link)
+        .setURL(`https://discord.com/channels/${guild.id}/${data.config.feedbackChannelId || channel.id}`);
+      await openerUser.send({ embeds: [feedback], components: [new ActionRowBuilder().addComponents(feedbackButton)] }).catch(() => null);
+    }
+  }
+
+  const logsId = data.config.ticket.logsChannelId;
+  if (logsId) {
+    const logsChannel = await guild.channels.fetch(logsId).catch(() => null);
+    if (logsChannel?.isTextBased()) {
+      await logsChannel
+        .send({
+          content: `📝 Transcript do ticket ${channel.name} (${channel.id}) fechado por ${closedByUser.tag}. Status: ${status}.`,
+          files: [transcriptFile]
+        })
+        .catch(() => null);
+    }
+  }
+}
+
 async function renameDeadlineTicket(guild, ticketMeta, channelId) {
   const channel = await guild.channels.fetch(channelId).catch(() => null);
   if (!channel) return;
@@ -203,6 +267,7 @@ client.on('messageCreate', async (message) => {
 });
 
 client.on('interactionCreate', async (interaction) => {
+  try {
   if (interaction.isChatInputCommand()) {
     const data = readData();
 
@@ -316,80 +381,25 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    if (interaction.customId === 'close_ticket_modal') {
-      const data = readData();
-      if (!isStaff(interaction.member, data)) {
-        await interaction.reply({ content: 'Somente staff.', ephemeral: true });
-        return;
-      }
-      const status = interaction.fields.getTextInputValue('status');
-      const notes = interaction.fields.getTextInputValue('notes');
-      const meta = data.tickets[interaction.channelId];
-      if (!meta) {
-        await interaction.reply({ content: 'Ticket não encontrado.', ephemeral: true });
-        return;
-      }
-
-      const transcriptMessages = await interaction.channel.messages.fetch({ limit: 100 });
-      const lines = [...transcriptMessages.values()]
-        .sort((a, b) => a.createdTimestamp - b.createdTimestamp)
-        .map((m) => `[${new Date(m.createdTimestamp).toISOString()}] ${m.author.tag}: ${m.content || '(sem texto)'}`)
-        .join('\n');
-      const transcriptContent = `Ticket: ${interaction.channel.name}\nStatus: ${status}\nObs: ${notes}\n\n${lines}`;
-
-      const user = await client.users.fetch(meta.openerId).catch(() => null);
-      if (user) {
-        const summary = new EmbedBuilder()
-          .setTitle('Resumo do Ticket')
-          .addFields(
-            { name: 'Aberto por', value: `<@${meta.openerId}>` },
-            { name: 'Fechado por', value: `<@${interaction.user.id}>` },
-            { name: 'Atendido por', value: meta.assumedBy ? `<@${meta.assumedBy}>` : 'Não assumido' },
-            { name: 'Status final', value: status }
-          )
-          .setColor(0x3498db);
-
-        const feedback = new EmbedBuilder().setTitle('Avaliação').setDescription('Avalie seu atendimento para nos ajudar.').setColor(0xf1c40f);
-        const feedbackButton = new ButtonBuilder()
-          .setLabel('Avaliar Atendimento')
-          .setStyle(ButtonStyle.Link)
-          .setURL(`https://discord.com/channels/${interaction.guildId}/${data.config.feedbackChannelId || interaction.channelId}`);
-
-        await user.send({ embeds: [summary] }).catch(() => null);
-        await user.send({ files: [{ attachment: Buffer.from(transcriptContent, 'utf8'), name: `transcript-${interaction.channelId}.txt` }] }).catch(() => null);
-        await user.send({ embeds: [feedback], components: [new ActionRowBuilder().addComponents(feedbackButton)] }).catch(() => null);
-      }
-
-      await logAction(interaction.guild, `Ticket ${interaction.channel.name} fechado por ${interaction.user.tag}. Status: ${status}.`);
-      await interaction.reply({ content: 'Ticket fechado com sucesso.', ephemeral: true });
-
-      updateData((d) => {
-        if (d.tickets[interaction.channelId]) {
-          d.tickets[interaction.channelId].status = status;
-          d.tickets[interaction.channelId].closedBy = interaction.user.id;
-        }
-      });
-
-      if (data.config.ticket.closedCategoryId) {
-        await interaction.channel.setParent(data.config.ticket.closedCategoryId).catch(() => null);
-      }
-
-      const secs = data.config.ticket.deleteClosedAfterSeconds;
-      if (secs > 0) {
-        setTimeout(() => interaction.channel.delete('Auto-delete pós fechamento').catch(() => null), secs * 1000);
-      }
-      return;
-    }
-
     if (interaction.customId.startsWith('member_manage_')) {
       const mode = interaction.customId.replace('member_manage_', '');
-      const userId = interaction.fields.getTextInputValue('userId').replace(/[<@!>]/g, '');
-      await interaction.channel.permissionOverwrites.edit(userId, {
+      const rawUser = interaction.fields.getTextInputValue('userId').trim();
+      const userId = rawUser.replace(/[<@!>]/g, '');
+      if (!/^\d{17,20}$/.test(userId)) {
+        await interaction.reply({ content: 'ID/menção inválido. Use uma menção ou ID numérico válido.', ephemeral: true });
+        return;
+      }
+      const targetMember = await interaction.guild.members.fetch(userId).catch(() => null);
+      if (!targetMember) {
+        await interaction.reply({ content: 'Usuário não encontrado neste servidor.', ephemeral: true });
+        return;
+      }
+      await interaction.channel.permissionOverwrites.edit(targetMember.id, {
         ViewChannel: mode === 'add',
         SendMessages: mode === 'add',
         ReadMessageHistory: mode === 'add'
       });
-      await interaction.reply({ content: `Usuário ${mode === 'add' ? 'adicionado' : 'removido'} no ticket.`, ephemeral: true });
+      await interaction.reply({ content: `${targetMember.user.tag} ${mode === 'add' ? 'adicionado ao' : 'removido do'} ticket.`, ephemeral: true });
       return;
     }
 
@@ -500,7 +510,6 @@ client.on('interactionCreate', async (interaction) => {
             new ButtonBuilder().setCustomId('staff_add').setLabel('Adicionar usuário').setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId('staff_remove').setLabel('Remover usuário').setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId('staff_rename').setLabel('Renomear').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('staff_close').setLabel('Fechar').setStyle(ButtonStyle.Primary),
             new ButtonBuilder().setCustomId('staff_delete').setLabel('Deletar').setStyle(ButtonStyle.Danger)
           )
         ]
@@ -530,24 +539,30 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    if (interaction.customId === 'leave_ticket') {
-      await interaction.reply({
-        content: 'Confirmar saída do ticket?',
-        ephemeral: true,
-        components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('leave_confirm').setLabel('Confirmar saída').setStyle(ButtonStyle.Danger))]
-      });
-      return;
-    }
-
-    if (interaction.customId === 'leave_confirm') {
+    if (interaction.customId === 'close_ticket') {
       const meta = data.tickets[interaction.channelId];
-      if (!meta) return;
-      if (interaction.user.id === meta.openerId) {
-        await interaction.channel.permissionOverwrites.edit(interaction.user.id, { ViewChannel: false, SendMessages: false });
-        await interaction.reply({ content: 'Você saiu do ticket.', ephemeral: true });
-      } else if (isStaff(interaction.member, data)) {
-        await interaction.reply({ content: 'Staff pode usar fechar ticket no painel.', ephemeral: true });
+      if (!meta) {
+        await interaction.reply({ content: 'Este canal não é um ticket válido.', ephemeral: true });
+        return;
       }
+
+      await sendTicketClosingArtifacts({
+        guild: interaction.guild,
+        channel: interaction.channel,
+        closedByUser: interaction.user,
+        status: 'fechado',
+        notes: 'Fechamento pelo botão principal',
+        includeFeedback: true
+      });
+      await logAction(interaction.guild, `Ticket ${interaction.channel.name} fechado por ${interaction.user.tag}. Deleção em 10 segundos.`);
+      await interaction.reply({ content: 'Ticket fechado. O canal será removido em 10 segundos.' });
+
+      setTimeout(() => {
+        updateData((d) => {
+          delete d.tickets[interaction.channelId];
+        });
+        interaction.channel.delete('Ticket fechado pelo botão principal').catch(() => null);
+      }, 10_000);
       return;
     }
 
@@ -575,19 +590,34 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.customId === 'staff_delete') {
-      await interaction.reply({ content: 'Ticket será deletado em 5 segundos.' });
-      setTimeout(() => interaction.channel.delete('Deletado pela staff').catch(() => null), 5000);
+      const meta = data.tickets[interaction.channelId];
+      if (!meta) {
+        await interaction.reply({ content: 'Este canal não é um ticket válido.', ephemeral: true });
+        return;
+      }
+      await sendTicketClosingArtifacts({
+        guild: interaction.guild,
+        channel: interaction.channel,
+        closedByUser: interaction.user,
+        status: 'deletado',
+        notes: 'Exclusão pelo painel staff',
+        includeFeedback: false
+      });
+      await logAction(interaction.guild, `Ticket ${interaction.channel.name} deletado por ${interaction.user.tag}. Transcript enviado para DM e logs.`);
+      await interaction.reply({ content: 'Transcript enviado. Ticket será deletado em 10 segundos.' });
+      setTimeout(() => {
+        updateData((d) => {
+          delete d.tickets[interaction.channelId];
+        });
+        interaction.channel.delete('Deletado pela staff').catch(() => null);
+      }, 10_000);
       return;
     }
-
-    if (interaction.customId === 'staff_close') {
-      const modal = new ModalBuilder().setCustomId('close_ticket_modal').setTitle('Fechar ticket');
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('status').setLabel('Status: resolvido/nao resolvido/cancelado/entregue').setStyle(TextInputStyle.Short).setRequired(true)),
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('notes').setLabel('Observações rápidas').setStyle(TextInputStyle.Paragraph).setRequired(false))
-      );
-      await interaction.showModal(modal);
-      return;
+  }
+  } catch (error) {
+    console.error('Erro ao processar interação:', error);
+    if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: 'Ocorreu um erro ao processar esta ação.', ephemeral: true }).catch(() => null);
     }
   }
 });
