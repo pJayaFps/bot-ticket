@@ -39,8 +39,7 @@ const client = new Client({
 const commands = [
   new SlashCommandBuilder().setName('enviar-ticket').setDescription('Configura e envia o painel de ticket'),
   new SlashCommandBuilder().setName('pix').setDescription('Envia embed PIX no ticket atual'),
-  new SlashCommandBuilder().setName('config').setDescription('Abre painel de configurações internas'),
-  new SlashCommandBuilder().setName('assumir-ticket').setDescription('Assume o ticket atual (somente staff)')
+  new SlashCommandBuilder().setName('config').setDescription('Abre painel de configurações internas')
 ].map((c) => c.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(token);
@@ -329,20 +328,6 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    if (interaction.commandName === 'assumir-ticket') {
-      const meta = data.tickets[interaction.channelId];
-      if (!meta) {
-        await interaction.reply({ content: 'Use este comando dentro de um ticket.', ephemeral: true });
-        return;
-      }
-      if (!isStaff(interaction.member, data)) {
-        await interaction.reply({ content: 'Somente staff.', ephemeral: true });
-        return;
-      }
-      const changed = await setAssumed(interaction.channel, interaction.user);
-      await interaction.reply({ content: changed ? 'Ticket assumido com sucesso.' : 'Este ticket já foi assumido.', ephemeral: true });
-      return;
-    }
   }
 
   if (interaction.isModalSubmit()) {

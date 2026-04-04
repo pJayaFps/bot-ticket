@@ -16,7 +16,7 @@
 - Resposta de abertura com embed de sucesso + botão **Ver Ticket**.
 - Embed interno do ticket com `Aberto por` e `Assumido por` (atualiza ao assumir).
 - Botões no ticket: **Sair do Ticket**, **Painel Membro**, **Painel Staff**, **Pagamento Confirmado**.
-- `/assumir-ticket` + auto-assume na primeira mensagem da staff.
+- Auto-assume na primeira mensagem enviada por staff dentro do ticket.
 - Mensagem automática detalhada enviada após abrir ticket.
 - `/pix` e `Pagamento Confirmado` com prazo automático 3d → 2d → 1d → entregar.
 - Deleção pelo painel staff com transcript `.txt` enviado no privado do usuário e no canal de logs, com remoção em 10s.
