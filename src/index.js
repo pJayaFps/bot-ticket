@@ -80,6 +80,10 @@ function isStaff(member, data) {
   return hasRole(member, data.config.ticketPanel.staffRoleId);
 }
 
+function isOpenerLockedFromInteractions(meta, userId) {
+  return Boolean(meta?.openerLeftAt && meta?.openerId === userId);
+}
+
 function applyGuildBranding(embed, guild) {
   if (!guild) return embed;
   return embed.setAuthor({
@@ -463,6 +467,18 @@ client.on('interactionCreate', async (interaction) => {
 
   if (interaction.isButton()) {
     const data = readData();
+    const ticketMeta = data.tickets[interaction.channelId];
+
+    if (
+      interaction.customId !== 'open_ticket' &&
+      isOpenerLockedFromInteractions(ticketMeta, interaction.user.id)
+    ) {
+      await interaction.reply({
+        content: 'Você saiu deste ticket e não pode mais usar botões nele.',
+        ephemeral: true
+      });
+      return;
+    }
 
     if (interaction.customId === 'open_ticket') {
       if (!hasRole(interaction.member, data.config.ticketPanel.openerRoleId)) {
@@ -486,6 +502,7 @@ client.on('interactionCreate', async (interaction) => {
         d.tickets[channel.id] = {
           openerId: interaction.user.id,
           createdAt: Date.now(),
+          openerLeftAt: null,
           assumedBy: null,
           paymentConfirmedAt: null,
           deadlineStage: -1,
@@ -584,12 +601,11 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.customId === 'leave_ticket') {
-      const meta = data.tickets[interaction.channelId];
-      if (!meta) {
+      if (!ticketMeta) {
         await interaction.reply({ content: 'Este canal não é um ticket válido.', ephemeral: true });
         return;
       }
-      if (interaction.user.id !== meta.openerId) {
+      if (interaction.user.id !== ticketMeta.openerId) {
         await interaction.reply({ content: 'Somente o cliente dono do ticket pode usar este botão.', ephemeral: true });
         return;
       }
@@ -603,7 +619,17 @@ client.on('interactionCreate', async (interaction) => {
         CreatePublicThreads: false,
         CreatePrivateThreads: false
       });
+      updateData((d) => {
+        if (d.tickets[interaction.channelId]) d.tickets[interaction.channelId].openerLeftAt = Date.now();
+      });
       await interaction.reply({ content: 'Você saiu do ticket. Agora você só pode visualizar este canal.', ephemeral: true });
+      const leaveNotice = applyGuildBranding(
+        new EmbedBuilder()
+          .setDescription(`⚠️ ${interaction.user} saiu do ticket e agora possui acesso apenas de visualização.`)
+          .setColor(0xe67e22),
+        interaction.guild
+      );
+      await interaction.channel.send({ embeds: [leaveNotice] });
       await logAction(interaction.guild, `${interaction.user.tag} saiu do ticket ${interaction.channel.name} (somente visualização).`);
       return;
     }
