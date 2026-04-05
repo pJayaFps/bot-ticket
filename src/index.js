@@ -46,31 +46,6 @@ const commands = [
 const rest = new REST({ version: '10' }).setToken(token);
 await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
 
-const AUTO_MESSAGE = `:rokedazul: **Número 1. CLIPS!**
-Na edit CLEAN 30seg = 10/12 clips SOMENTE!
-Na edit CLEAN 45seg = 12/16 clips SOMENTE!
-Na edit CLEAN 1min = 16/20 clips SOMENTE!
-
-Na edit BÁSICA 30seg = 15/20 clips SOMENTE!
-Na edit BÁSICA 45seg = 20/25 clips SOMENTE!
-Na edit BÁSICA 1min = 25/30 clips SOMENTE!
-
-Na edit AVANÇADA 30seg = 20/25 clips SOMENTE!
-Na edit AVANÇADA 45seg = 25/30 clips SOMENTE!
-Na edit AVANÇADA 1min = 30/35 clips SOMENTE!
-
-Obrigatório ser a quantidade pedida, nada a MAIS nem a MENOS.
-
-:rokedazul: **Número 2. MÚSICA!**
-Escolha a música desejada, envie o link do YouTube.
-Informe o trecho desejado. Exemplo: "COMEÇA EM 0:00".
-
-:rokedazul: **Número 3. ENTREGA DO VÍDEO!**
-A entrega acontece por ordem da fila.
-
-Se ocorrer algum imprevisto, avisaremos em <#ANUNCIOS_CHANNEL_ID>.
-Fique de olho nas notificações.`;
-
 function hasRole(member, roleId) {
   if (!roleId) return true;
   return member.roles.cache.has(roleId);
@@ -520,9 +495,6 @@ client.on('interactionCreate', async (interaction) => {
       updateData((d) => {
         if (d.tickets[channel.id]) d.tickets[channel.id].mainMessageId = ticketMsg.id;
       });
-
-      const autoText = AUTO_MESSAGE.replace('ANUNCIOS_CHANNEL_ID', data.config.feedbackChannelId || channel.id);
-      await channel.send({ content: autoText });
 
       const confirm = applyGuildBranding(new EmbedBuilder()
         .setTitle('✅ Ticket aberto com sucesso')

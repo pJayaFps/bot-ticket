@@ -18,7 +18,6 @@
 - Branding em embeds com autor **GUSTAVIN EDITS** + ícone do servidor.
 - Botões no ticket: **Sair do Ticket**, **Painel Membro**, **Painel Staff**, **Pagamento Confirmado**.
 - Auto-assume na primeira mensagem enviada por staff dentro do ticket.
-- Mensagem automática detalhada enviada após abrir ticket.
 - `/pix` com QR Code visível no embed e `Pagamento Confirmado`; configuração de preço/PIX via comando `/config-pix` (modal), com prazo automático 3d → 2d → 1d → entregar.
 - Deleção pelo painel staff com transcript `.txt` enviado no privado do usuário e no canal de logs, com remoção em 10s.
 - Logs configuráveis em canal específico.
