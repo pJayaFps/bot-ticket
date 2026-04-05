@@ -317,10 +317,10 @@ client.on('interactionCreate', async (interaction) => {
       const modal = new ModalBuilder().setCustomId('setup_global').setTitle('Configuração geral');
       modal.addComponents(
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('logs').setLabel('Canal logs ID').setStyle(TextInputStyle.Short).setRequired(false).setValue(data.config.ticket.logsChannelId || '')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('open_category').setLabel('Categoria abrir tickets ID').setStyle(TextInputStyle.Short).setRequired(false).setValue(data.config.ticketPanel.categoryId || '')),
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('closed').setLabel('Categoria fechados ID').setStyle(TextInputStyle.Short).setRequired(false).setValue(data.config.ticket.closedCategoryId || '')),
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('delsec').setLabel('Deletar após fechar (segundos)').setStyle(TextInputStyle.Short).setRequired(false).setValue(String(data.config.ticket.deleteClosedAfterSeconds || 0))),
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('feedback').setLabel('Canal feedback ID').setStyle(TextInputStyle.Short).setRequired(false).setValue(data.config.feedbackChannelId || '')),
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('transcript').setLabel('Transcript tipo: txt/html/embed').setStyle(TextInputStyle.Short).setRequired(false).setValue(data.config.transcript.type || 'txt'))
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('feedback').setLabel('Canal feedback ID').setStyle(TextInputStyle.Short).setRequired(false).setValue(data.config.feedbackChannelId || ''))
       );
       await interaction.showModal(modal);
       return;
@@ -403,10 +403,10 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId === 'setup_global') {
       updateData((d) => {
         d.config.ticket.logsChannelId = interaction.fields.getTextInputValue('logs');
+        d.config.ticketPanel.categoryId = interaction.fields.getTextInputValue('open_category');
         d.config.ticket.closedCategoryId = interaction.fields.getTextInputValue('closed');
         d.config.ticket.deleteClosedAfterSeconds = Number(interaction.fields.getTextInputValue('delsec') || 0);
         d.config.feedbackChannelId = interaction.fields.getTextInputValue('feedback');
-        d.config.transcript.type = interaction.fields.getTextInputValue('transcript') || 'txt';
       });
       await interaction.reply({ content: 'Configurações atualizadas.', ephemeral: true });
       return;
