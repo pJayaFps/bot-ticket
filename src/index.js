@@ -417,11 +417,19 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.reply({ content: 'Usuário não encontrado neste servidor.', ephemeral: true });
         return;
       }
-      await interaction.channel.permissionOverwrites.edit(targetMember.id, {
-        ViewChannel: mode === 'add',
-        SendMessages: mode === 'add',
-        ReadMessageHistory: mode === 'add'
-      });
+      if (interaction.channel?.isThread?.()) {
+        if (mode === 'add') {
+          await interaction.channel.members.add(targetMember.id);
+        } else {
+          await interaction.channel.members.remove(targetMember.id);
+        }
+      } else {
+        await interaction.channel.permissionOverwrites.edit(targetMember.id, {
+          ViewChannel: mode === 'add',
+          SendMessages: mode === 'add',
+          ReadMessageHistory: mode === 'add'
+        });
+      }
       await interaction.reply({ content: `${targetMember.user.tag} ${mode === 'add' ? 'adicionado ao' : 'removido do'} ticket.`, ephemeral: true });
       return;
     }
