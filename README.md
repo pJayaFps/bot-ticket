@@ -21,7 +21,7 @@
 - `/pix` com QR Code visível no embed e `Pagamento Confirmado`; configuração de preço/PIX via comando `/config-pix` (modal), com prazo automático 3d → 2d → 1d → entregar.
 - Deleção pelo painel staff com transcript `.txt` enviado no privado do usuário e no canal de logs, com remoção em 10s.
 - Logs configuráveis em canal específico.
-- `/config` para configurações gerais sem editar código (incluindo categoria onde novos tickets serão abertos).
+- `/config` para configurações gerais sem editar código (incluindo o canal onde o bot abrirá os tickets como tópico privado).
 
 ## Persistência
 - Dados em `data/config.json`.

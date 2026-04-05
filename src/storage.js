@@ -10,6 +10,7 @@ const defaultData = {
       title: 'Central de Tickets',
       description: 'Clique no botão para abrir seu ticket.',
       color: '#2b2d31',
+      openChannelId: '',
       categoryId: '',
       staffRoleId: '',
       openerRoleId: ''

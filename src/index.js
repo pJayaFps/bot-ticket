@@ -292,7 +292,7 @@ client.on('interactionCreate', async (interaction) => {
       const modal = new ModalBuilder().setCustomId('setup_global').setTitle('Configuração geral');
       modal.addComponents(
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('logs').setLabel('Canal logs ID').setStyle(TextInputStyle.Short).setRequired(false).setValue(data.config.ticket.logsChannelId || '')),
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('open_category').setLabel('Categoria abrir tickets ID').setStyle(TextInputStyle.Short).setRequired(false).setValue(data.config.ticketPanel.categoryId || '')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('open_channel').setLabel('Canal para abrir ticket (ID)').setStyle(TextInputStyle.Short).setRequired(false).setValue(data.config.ticketPanel.openChannelId || data.config.ticketPanel.categoryId || '')),
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('closed').setLabel('Categoria fechados ID').setStyle(TextInputStyle.Short).setRequired(false).setValue(data.config.ticket.closedCategoryId || '')),
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('delsec').setLabel('Deletar após fechar (segundos)').setStyle(TextInputStyle.Short).setRequired(false).setValue(String(data.config.ticket.deleteClosedAfterSeconds || 0))),
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('feedback').setLabel('Canal feedback ID').setStyle(TextInputStyle.Short).setRequired(false).setValue(data.config.feedbackChannelId || ''))
@@ -378,7 +378,7 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId === 'setup_global') {
       updateData((d) => {
         d.config.ticket.logsChannelId = interaction.fields.getTextInputValue('logs');
-        d.config.ticketPanel.categoryId = interaction.fields.getTextInputValue('open_category');
+        d.config.ticketPanel.openChannelId = interaction.fields.getTextInputValue('open_channel');
         d.config.ticket.closedCategoryId = interaction.fields.getTextInputValue('closed');
         d.config.ticket.deleteClosedAfterSeconds = Number(interaction.fields.getTextInputValue('delsec') || 0);
         d.config.feedbackChannelId = interaction.fields.getTextInputValue('feedback');
@@ -460,18 +460,31 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.reply({ content: 'Você não pode abrir ticket.', ephemeral: true });
         return;
       }
+      const openChannelId = data.config.ticketPanel.openChannelId || data.config.ticketPanel.categoryId;
+      if (!openChannelId) {
+        await interaction.reply({ content: 'Configure em /config o canal onde os tickets privados (tópicos) serão abertos.', ephemeral: true });
+        return;
+      }
+      const parentChannel = await interaction.guild.channels.fetch(openChannelId).catch(() => null);
+      if (!parentChannel?.isTextBased() || !('threads' in parentChannel)) {
+        await interaction.reply({ content: 'Canal de abertura inválido. Configure um canal de texto válido em /config.', ephemeral: true });
+        return;
+      }
 
-      const channel = await interaction.guild.channels.create({
+      const channel = await parentChannel.threads.create({
         name: `ticket-${interaction.user.username}`.toLowerCase().replace(/[^a-z0-9-_]/g, '').slice(0, 90),
-        type: ChannelType.GuildText,
-        parent: data.config.ticketPanel.categoryId || null,
-        permissionOverwrites: [
-          { id: interaction.guild.roles.everyone.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
-          { id: data.config.ticketPanel.staffRoleId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
-          { id: client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ManageChannels, PermissionsBitField.Flags.ManageMessages, PermissionsBitField.Flags.ReadMessageHistory] }
-        ]
+        autoArchiveDuration: 10080,
+        type: ChannelType.PrivateThread,
+        invitable: false,
+        reason: `Ticket aberto por ${interaction.user.tag}`
       });
+      await channel.members.add(interaction.user.id).catch(() => null);
+      const staffRole = interaction.guild.roles.cache.get(data.config.ticketPanel.staffRoleId);
+      if (staffRole) {
+        for (const member of staffRole.members.values()) {
+          await channel.members.add(member.id).catch(() => null);
+        }
+      }
 
       updateData((d) => {
         d.tickets[channel.id] = {
@@ -582,15 +595,17 @@ client.on('interactionCreate', async (interaction) => {
         return;
       }
 
-      await interaction.channel.permissionOverwrites.edit(interaction.user.id, {
-        ViewChannel: true,
-        ReadMessageHistory: true,
-        SendMessages: false,
-        AddReactions: false,
-        AttachFiles: false,
-        CreatePublicThreads: false,
-        CreatePrivateThreads: false
-      });
+      if (interaction.channel.type !== ChannelType.PrivateThread) {
+        await interaction.channel.permissionOverwrites.edit(interaction.user.id, {
+          ViewChannel: true,
+          ReadMessageHistory: true,
+          SendMessages: false,
+          AddReactions: false,
+          AttachFiles: false,
+          CreatePublicThreads: false,
+          CreatePrivateThreads: false
+        });
+      }
       updateData((d) => {
         if (d.tickets[interaction.channelId]) d.tickets[interaction.channelId].openerLeftAt = Date.now();
       });
