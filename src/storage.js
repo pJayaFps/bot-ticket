@@ -46,10 +46,37 @@ function ensureDataFile() {
   }
 }
 
+function cloneDefaultData() {
+  return JSON.parse(JSON.stringify(defaultData));
+}
+
+function normalizeDataShape(data) {
+  const merged = cloneDefaultData();
+  merged.config = { ...merged.config, ...(data?.config || {}) };
+  merged.config.ticketPanel = { ...merged.config.ticketPanel, ...(data?.config?.ticketPanel || {}) };
+  merged.config.ticket = { ...merged.config.ticket, ...(data?.config?.ticket || {}) };
+  merged.config.pix = { ...merged.config.pix, ...(data?.config?.pix || {}) };
+  merged.config.transcript = { ...merged.config.transcript, ...(data?.config?.transcript || {}) };
+  merged.tickets = data?.tickets && typeof data.tickets === 'object' ? data.tickets : {};
+  return merged;
+}
+
 export function readData() {
   ensureDataFile();
   const raw = fs.readFileSync(DATA_FILE, 'utf8');
-  return JSON.parse(raw);
+  try {
+    const parsed = JSON.parse(raw);
+    return normalizeDataShape(parsed);
+  } catch {
+    const backupPath = path.join(
+      DATA_DIR,
+      `config.corrupted-${Date.now()}.json`
+    );
+    fs.writeFileSync(backupPath, raw, 'utf8');
+    const safe = cloneDefaultData();
+    fs.writeFileSync(DATA_FILE, JSON.stringify(safe, null, 2), 'utf8');
+    return safe;
+  }
 }
 
 export function writeData(nextData) {
