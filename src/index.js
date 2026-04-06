@@ -38,6 +38,7 @@ const client = new Client({
 
 const commands = [
   new SlashCommandBuilder().setName('enviar-ticket').setDescription('Configura e envia o painel de ticket'),
+  new SlashCommandBuilder().setName('enviar-valores').setDescription('Envia embed de valores com botão para o painel de ticket'),
   new SlashCommandBuilder().setName('pix').setDescription('Envia embed PIX no ticket atual'),
   new SlashCommandBuilder().setName('config').setDescription('Abre painel de configurações internas'),
   new SlashCommandBuilder().setName('config-pix').setDescription('Configura PIX e preço via comando')
@@ -284,6 +285,21 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
+    if (interaction.commandName === 'enviar-valores') {
+      if (!isStaff(interaction.member, data)) {
+        await interaction.reply({ content: 'Somente staff.', ephemeral: true });
+        return;
+      }
+      const modal = new ModalBuilder().setCustomId('setup_valores_embed').setTitle('Enviar embed de valores');
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('valores_channel_id').setLabel('Canal de valores (ID)').setStyle(TextInputStyle.Short).setRequired(true)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('image_url').setLabel('URL da imagem da tabela').setStyle(TextInputStyle.Short).setRequired(true)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('ticket_panel_channel').setLabel('Canal do painel ticket (ID)').setStyle(TextInputStyle.Short).setRequired(true).setValue('1490160822335574166'))
+      );
+      await interaction.showModal(modal);
+      return;
+    }
+
     if (interaction.commandName === 'config') {
       if (!isStaff(interaction.member, data)) {
         await interaction.reply({ content: 'Somente staff.', ephemeral: true });
@@ -372,6 +388,42 @@ client.on('interactionCreate', async (interaction) => {
         embeds: [ticketPanelEmbed(readData(), interaction.guild)],
         components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('open_ticket').setLabel('➡️ Abrir Ticket').setStyle(ButtonStyle.Primary))]
       });
+      return;
+    }
+
+    if (interaction.customId === 'setup_valores_embed') {
+      const data = readData();
+      if (!isStaff(interaction.member, data)) {
+        await interaction.reply({ content: 'Somente staff.', ephemeral: true });
+        return;
+      }
+      const valoresChannelId = interaction.fields.getTextInputValue('valores_channel_id').trim();
+      const imageUrl = interaction.fields.getTextInputValue('image_url').trim();
+      const ticketPanelChannelId = interaction.fields.getTextInputValue('ticket_panel_channel').trim();
+
+      const valoresChannel = await interaction.guild.channels.fetch(valoresChannelId).catch(() => null);
+      if (!valoresChannel?.isTextBased()) {
+        await interaction.reply({ content: 'Canal de valores inválido.', ephemeral: true });
+        return;
+      }
+
+      const embed = applyGuildBranding(
+        new EmbedBuilder()
+          .setTitle('💸 Tabela de Valores')
+          .setDescription('Confira os valores na imagem abaixo e clique em **Abrir Ticket** para ir ao painel de atendimento.')
+          .setImage(imageUrl)
+          .setColor(0x5865f2),
+        interaction.guild
+      );
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel('Abrir Ticket')
+          .setStyle(ButtonStyle.Link)
+          .setURL(`https://discord.com/channels/${interaction.guildId}/${ticketPanelChannelId}`)
+      );
+
+      await valoresChannel.send({ embeds: [embed], components: [row] });
+      await interaction.reply({ content: 'Embed de valores enviado com sucesso.', ephemeral: true });
       return;
     }
 
