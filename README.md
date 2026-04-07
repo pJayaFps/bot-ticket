@@ -13,6 +13,7 @@
 
 ## Recursos implementados
 - `/enviar-ticket` com modal para configurar painel com embed mais visual.
+- No campo de staff, aceita **ID de cargo ou ID de usuário** (para adicionar staff fixo no tópico privado ao abrir ticket).
 - `/enviar-valores` para enviar embed de tabela de valores (com imagem) e botão **Abrir Ticket** redirecionando ao canal do painel.
 - Resposta de abertura com embed de sucesso + botão **Ver Ticket**.
 - Embed interno do ticket com `Aberto por` e `Assumido por` (atualiza ao assumir).

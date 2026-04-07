@@ -53,7 +53,9 @@ function hasRole(member, roleId) {
 }
 
 function isStaff(member, data) {
-  return hasRole(member, data.config.ticketPanel.staffRoleId);
+  const staffTargetId = data.config.ticketPanel.staffRoleId;
+  if (!staffTargetId) return true;
+  return member.id === staffTargetId || hasRole(member, staffTargetId);
 }
 
 function isOpenerLockedFromInteractions(meta, userId) {
@@ -277,7 +279,7 @@ client.on('interactionCreate', async (interaction) => {
       modal.addComponents(
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('title').setLabel('Título').setStyle(TextInputStyle.Short).setRequired(true).setValue(data.config.ticketPanel.title || '🎬 Central de Pedidos')),
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('description').setLabel('Descrição').setStyle(TextInputStyle.Paragraph).setRequired(true).setValue(data.config.ticketPanel.description || 'Abra seu ticket para iniciar o atendimento.')),
-        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('staffRole').setLabel('Cargo staff ID').setStyle(TextInputStyle.Short).setRequired(true).setValue(data.config.ticketPanel.staffRoleId || '')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('staffRole').setLabel('Cargo ou usuário staff (ID)').setStyle(TextInputStyle.Short).setRequired(true).setValue(data.config.ticketPanel.staffRoleId || '')),
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('openRole').setLabel('Cargo pode abrir ID').setStyle(TextInputStyle.Short).setRequired(true).setValue(data.config.ticketPanel.openerRoleId || '')),
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('color').setLabel('Cor do embed (#5865F2)').setStyle(TextInputStyle.Short).setRequired(false).setValue(data.config.ticketPanel.color || '#5865F2'))
       );
@@ -540,11 +542,14 @@ client.on('interactionCreate', async (interaction) => {
         reason: `Ticket aberto por ${interaction.user.tag}`
       });
       await channel.members.add(interaction.user.id).catch(() => null);
-      const staffRole = interaction.guild.roles.cache.get(data.config.ticketPanel.staffRoleId);
+      const staffTargetId = data.config.ticketPanel.staffRoleId;
+      const staffRole = interaction.guild.roles.cache.get(staffTargetId);
       if (staffRole) {
         for (const member of staffRole.members.values()) {
           await channel.members.add(member.id).catch(() => null);
         }
+      } else if (staffTargetId) {
+        await channel.members.add(staffTargetId).catch(() => null);
       }
 
       updateData((d) => {
@@ -698,7 +703,9 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId === 'member_notify') {
       await interaction.reply({ content: 'Staff foi notificada neste ticket.' });
       if (data.config.ticketPanel.staffRoleId) {
-        await interaction.channel.send(`<@&${data.config.ticketPanel.staffRoleId}> notificação solicitada por ${interaction.user}.`);
+        const staffTargetId = data.config.ticketPanel.staffRoleId;
+        const asRole = interaction.guild.roles.cache.has(staffTargetId);
+        await interaction.channel.send(`${asRole ? `<@&${staffTargetId}>` : `<@${staffTargetId}>`} notificação solicitada por ${interaction.user}.`);
       }
       return;
     }
