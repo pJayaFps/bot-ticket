@@ -20,6 +20,7 @@
 - Botões no ticket: **Sair do Ticket**, **Painel Membro**, **Painel Staff**, **Pagamento Confirmado**.
 - Auto-assume na primeira mensagem enviada por staff dentro do ticket.
 - `/pix` com QR Code visível no embed e `Pagamento Confirmado`; configuração de preço/PIX via comando `/config-pix` (modal), com prazo automático 3d → 2d → 1d → entregar.
+- `/pix` com botão **Copiar PIX** (resposta ephemera com a chave para mobile) e botão `Pagamento Confirmado`; configuração de preço/PIX via comando `/config-pix` (modal), com prazo automático 3d → 2d → 1d → entregar.
 - Deleção pelo painel staff com transcript `.txt` enviado no privado do usuário e no canal de logs, com remoção em 10s.
 - Logs configuráveis em canal específico.
 - `/config` para configurações gerais sem editar código (incluindo o canal onde o bot abrirá os tickets como tópico privado).

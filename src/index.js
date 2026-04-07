@@ -340,6 +340,7 @@ client.on('interactionCreate', async (interaction) => {
         embeds: [embed],
         components: [
           new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('copy_pix').setLabel('Copiar PIX').setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId('pay_confirmed').setLabel('Pagamento Confirmado').setStyle(ButtonStyle.Success)
           )
         ]
@@ -642,6 +643,19 @@ client.on('interactionCreate', async (interaction) => {
       await renameDeadlineTicket(interaction.guild, { ...meta, paymentConfirmedAt: now, deadlineStage: -1 }, interaction.channelId);
       await interaction.reply({ content: 'Pagamento confirmado pela staff.' });
       await logAction(interaction.guild, `${interaction.user.tag} confirmou pagamento em ${interaction.channel.name}.`);
+      return;
+    }
+
+    if (interaction.customId === 'copy_pix') {
+      const pixKey = data.config.pix.pixKey?.trim();
+      if (!pixKey) {
+        await interaction.reply({ content: 'Chave PIX ainda não configurada.', ephemeral: true });
+        return;
+      }
+      await interaction.reply({
+        content: `**Chave PIX para copiar:**\n\`${pixKey}\``,
+        ephemeral: true
+      });
       return;
     }
 
