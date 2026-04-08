@@ -1,0 +1,15 @@
+{
+  "name": "discord-ticket-bot",
+  "version": "1.0.0",
+  "description": "Bot de tickets Discord 100% configurável por botões/modals",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "check": "node --check src/index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.19.3",
+    "dotenv": "^16.6.1"
+  }
+}
