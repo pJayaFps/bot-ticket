@@ -62,6 +62,13 @@ function isOpenerLockedFromInteractions(meta, userId) {
   return Boolean(meta?.openerLeftAt && meta?.openerId === userId);
 }
 
+function sanitizeComponentRows(rows = []) {
+  return rows.slice(0, 5).map((row) => {
+    if (!row?.components || row.components.length <= 5) return row;
+    return new ActionRowBuilder().addComponents(...row.components.slice(0, 5));
+  });
+}
+
 function applyGuildBranding(embed, guild) {
   if (!guild) return embed;
   return embed.setAuthor({
@@ -87,14 +94,14 @@ function userTicketEmbed(user, meta, guild) {
 }
 
 function ticketButtons() {
-  return [
+  return sanitizeComponentRows([
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('leave_ticket').setLabel('Sair do Ticket').setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId('member_panel').setLabel('Painel Membro').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('staff_panel').setLabel('Painel Staff').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('pay_confirmed').setLabel('Pagamento Confirmado').setStyle(ButtonStyle.Success)
     )
-  ];
+  ]);
 }
 
 function ticketPanelEmbed(data, guild) {
@@ -206,7 +213,10 @@ async function sendTicketClosingArtifacts({
         .setLabel('Avaliar Atendimento')
         .setStyle(ButtonStyle.Link)
         .setURL(`https://discord.com/channels/${guild.id}/${data.config.feedbackChannelId || channel.id}`);
-      await openerUser.send({ embeds: [feedback], components: [new ActionRowBuilder().addComponents(feedbackButton)] }).catch(() => null);
+      await openerUser.send({
+        embeds: [feedback],
+        components: sanitizeComponentRows([new ActionRowBuilder().addComponents(feedbackButton)])
+      }).catch(() => null);
     }
   }
 
@@ -340,12 +350,12 @@ client.on('interactionCreate', async (interaction) => {
         .setColor(0x2ecc71), interaction.guild);
       await interaction.reply({
         embeds: [embed],
-        components: [
+        components: sanitizeComponentRows([
           new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('copy_pix').setLabel('Copiar PIX').setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId('pay_confirmed').setLabel('Pagamento Confirmado').setStyle(ButtonStyle.Success)
           )
-        ]
+        ])
       });
       return;
     }
@@ -389,7 +399,7 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.reply({ content: 'Painel enviado.', ephemeral: true });
       await interaction.channel.send({
         embeds: [ticketPanelEmbed(readData(), interaction.guild)],
-        components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('open_ticket').setLabel('➡️ Abrir Ticket').setStyle(ButtonStyle.Primary))]
+        components: sanitizeComponentRows([new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('open_ticket').setLabel('➡️ Abrir Ticket').setStyle(ButtonStyle.Primary))])
       });
       return;
     }
@@ -425,7 +435,7 @@ client.on('interactionCreate', async (interaction) => {
           .setURL(`https://discord.com/channels/${interaction.guildId}/${ticketPanelChannelId}`)
       );
 
-      await valoresChannel.send({ embeds: [embed], components: [row] });
+      await valoresChannel.send({ embeds: [embed], components: sanitizeComponentRows([row]) });
       await interaction.reply({ content: 'Embed de valores enviado com sucesso.', ephemeral: true });
       return;
     }
@@ -568,7 +578,7 @@ client.on('interactionCreate', async (interaction) => {
       const ticketMsg = await channel.send({
         content: `<@${interaction.user.id}>`,
         embeds: [userTicketEmbed(interaction.user, readData().tickets[channel.id], interaction.guild)],
-        components: ticketButtons()
+        components: sanitizeComponentRows(ticketButtons())
       });
 
       updateData((d) => {
@@ -583,11 +593,11 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.reply({
         embeds: [confirm],
         ephemeral: true,
-        components: [
+        components: sanitizeComponentRows([
           new ActionRowBuilder().addComponents(
             new ButtonBuilder().setLabel('Ver Ticket').setStyle(ButtonStyle.Link).setURL(`https://discord.com/channels/${interaction.guildId}/${channel.id}`)
           )
-        ]
+        ])
       });
 
       await logAction(interaction.guild, `${interaction.user.tag} abriu o ticket ${channel.name}.`);
@@ -598,13 +608,13 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.reply({
         content: 'Painel Membro: escolha uma ação.',
         ephemeral: true,
-        components: [
+        components: sanitizeComponentRows([
           new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('member_add').setLabel('Adicionar membro').setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId('member_remove').setLabel('Remover membro').setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId('member_notify').setLabel('Notificar staff').setStyle(ButtonStyle.Primary)
           )
-        ]
+        ])
       });
       return;
     }
@@ -617,14 +627,14 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.reply({
         content: 'Painel Staff: escolha uma ação.',
         ephemeral: true,
-        components: [
+        components: sanitizeComponentRows([
           new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('staff_add').setLabel('Adicionar usuário').setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId('staff_remove').setLabel('Remover usuário').setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId('staff_rename').setLabel('Renomear').setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId('staff_delete').setLabel('Deletar').setStyle(ButtonStyle.Danger)
           )
-        ]
+        ])
       });
       return;
     }
